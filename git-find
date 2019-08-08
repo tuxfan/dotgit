@@ -1,0 +1,177 @@
+#!/usr/bin/env python
+
+# TODO: drop frontier nodes that are ancestors of every goal (requires a concurrent BFS, and only works for goals that are commits)
+# TODO: compare/merge with git name-rev
+# TODO: git API
+# TODO: support limiting to a subdirectory
+# TODO: support a pattern argument to for-each-ref
+# TODO: prefer non-dangling roots
+# TODO: a mode that searches reflogs (and thus doesn't merely rev-parse the sources, nor use --no-reflogs for fsck)
+
+import sys,collections,subprocess,stat,argparse
+
+def revParse(s):
+  try:
+    # TODO: check full hashes for existence, since this doesn't
+    return s,subprocess.check_output(["git","rev-parse","--verify",s]).rstrip()
+  except subprocess.CalledProcessError as e:
+    raise argparse.ArgumentTypeError(str(e))
+
+def name2(n,h): return ("" if h.startswith(n) else n+" ")+h
+
+ap=argparse.ArgumentParser(description="Find paths to Git objects.")
+ap.add_argument("-b","--from",action='append',type=revParse,dest="root",
+                help="add a search root")
+ap.add_argument("object",nargs='*',type=revParse,help="object to find")
+
+args=ap.parse_args()
+
+if not args.root:
+  args.root=[l.partition(" ")[::-2] for l in
+             subprocess.check_output
+             (["git","for-each-ref","--format=%(objectname) %(refname:short)"])
+             .split("\n") if l]+\
+             [(s[-1],s[-1]) for s in
+              (l.split() for l in subprocess.check_output
+               (["git","fsck","--no-reflogs"]).split("\n") if l)
+              if s[0]=="dangling"]
+
+cf=subprocess.Popen(["git","cat-file","--batch"],stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE)
+db={g:True for _,g in args.object}
+
+class Path(object):
+  __slots__=()
+  def __init__(self,b): self.back=b # Path or str
+  # Convert hashes to objects and iterate over them.
+  # TODO: wipe everything after searching children(!), since we won't visit it again
+  def explore(self): raise NotImplementedError
+  def path(self):
+    ret=[]
+    p=self
+    tilde=0
+    while True:
+      b=p.back
+      c=b if isinstance(b,str) else b.pathTo(p)
+      if c==0: tilde+=1
+      else:
+        if tilde:
+          ret.append("^"*tilde if tilde<3 else "~%d"%tilde)
+          tilde=0
+        if isinstance(c,int): c="^%d"%(c+1)
+        ret.append(c)
+        if isinstance(b,str): break
+      p=b
+    # FIXME: you have to use ^{tree} (not just :) to select a commit's tree.
+    # You need to (and can) use : on a tree to get to a subtree.
+    return "".join(reversed(ret))
+  def pathTo(self): raise NotImplementedError
+
+class Commit(list,Path):
+  __slots__="back","tree"
+  def __init__(self,t,b): self.tree=t; Path.__init__(self,b)
+  def explore(self):
+    self.tree=x=getObject(self.tree,self); yield x
+    for i,x in enumerate(self): self[i]=x=getObject(x,self); yield x
+  def pathTo(self,c):
+    for i,x in enumerate(self):
+      if x is c: return i
+    assert c is self.tree
+    return ":"
+class Tree(dict,Path):
+  __slots__="back",
+  __init__=Path.__init__
+  def explore(self):
+    for k,(t,x) in self.items():
+      self[k]=x=getObject(x,self,not t)
+      yield x
+  def pathTo(self,c):
+    for k,o in self.iteritems():
+      if o is c: return k+("/" if isinstance(c,Tree) else "")
+    raise LookupError("no child %r"%c)
+class Tag(Path):
+  __slots__="back","object"
+  def __init__(self,o,b): self.object=o; Path.__init__(self,b)
+  def explore(self):
+    # We could parse the object type out of the tag to set blob properly here.
+    self.object=x=getObject(self.object,self)
+    yield x
+  def pathTo(self,c):
+    assert c is self.object
+    return "^{}"
+class Blob(str,Path):           # FIXME: these cost a dict each!
+  def __new__(cls,n,b): return super(Blob,cls).__new__(cls,n)
+  def __init__(self,n,b): Path.__init__(self,b)
+  def explore(self): return ()
+
+def getObject(n,back,blob=False):
+  # HACK: this is awful nesting of oset and seek.
+  o=db.get(n)
+  # TODO: update back, to find where something was first introduced?  "First"
+  # might include preferring first parents.  First parents could be preferred
+  # more than just via path length, without doing DFS, by updating the back
+  # pointer when following the first parent (of the first parent...), delaying
+  # output until all paths that don't include the goal already found have been
+  # explored.
+  goal=o is True
+  if goal or o is None:
+    o=db[n]=getObject0(n,back,blob)
+    if not blob: oset.append(o)
+  if goal:
+    global seek
+    seek-=1
+  return o
+def getObject0(n,back,blob):
+  if blob: return Blob(n,back)
+  cf.stdin.write(n+"\n")        # this is too small to fill the pipe
+  cf.stdin.flush()
+  _,typ,sz=cf.stdout.readline().split()
+  sz=int(sz)
+  d=cf.stdout.read(sz)
+  assert len(d)==sz
+  assert cf.stdout.read(1)=="\n"
+  if typ=="commit":
+    for l in d.split("\n"):
+      f,_,v=l.partition(' ')
+      if f=="tree": ret=Commit(v,back)
+      elif f=="parent": ret.append(v)
+      else: break
+    return ret
+  if typ=="tree":
+    ret=Tree(back)
+    while d:
+      m,_,d=d.partition(' ')
+      t=stat.S_ISDIR(int(m,8))
+      f,_,d=d.partition('\0')
+      ret[f]=t,"".join("%02x"%ord(c) for c in d[:20])
+      d=d[20:]
+    return ret
+  if typ=="tag":
+    for l in d.split("\n"):
+      f,_,v=l.partition(' ')
+      if f=="object": return Tag(v,back)
+    raise ValueError("tag has no object")
+  if typ=="blob": return Blob(n,back) # for roots and tagged blobs
+  raise AssertionError("unsupported: %r"%typ)
+
+# BFS:
+seek=len(db)
+oset=collections.deque()
+for n,x in args.root: getObject(x,n)
+
+while oset and seek:
+  for x in oset.popleft().explore(): pass # !!!
+cf.stdin.close()
+if cf.wait():
+  print >>sys.stderr,"%s: warning: git cat-file exited with"%sys.argv[0],\
+      cf.returncode
+
+bad=False
+for n,g in args.object:
+  o=db[g]
+  if o is True:
+    print >>sys.stderr, "not found:",name2(n,g)
+    bad=True
+  else: print name2(n,g),o.path()
+
+sys.exit(bad)

@@ -1,0 +1,46 @@
+#!/usr/bin/env python
+
+import sys,subprocess
+
+def unpfx(s,p):
+  if not s.startswith(p): raise ValueError("%r does not have prefix %r"%(s,p))
+  return s[len(p):]
+
+if not 2<=len(sys.argv)<=3:
+  raise Exception("usage: git super commit-ish [bdy]")
+cmt=sys.argv[1]
+if len(sys.argv)>2: bdy=sys.argv[2]+".."
+else: bdy=""
+
+cFile=None
+repl=set()
+def out():
+  if cFile is not None:
+    ann=[l.split()[0] for l in
+         subprocess.check_output(["git","blame",
+                                  bdy+cmt+"^","--",cFile]).splitlines()]
+    for lnum in minus:
+      c=ann[lnum-1]
+      if not c.startswith("^"): repl.add(c)
+
+cLine=None
+getFile=False
+for l in subprocess.check_output(["git","show","--format=format:",
+                                  cmt]).splitlines():
+  if l.startswith("index"): getFile=True
+  elif getFile:
+    getFile=False
+    out()
+    l=unpfx(l,"--- ")
+    cFile=None if l=="/dev/null" else unpfx(l,"a/")
+    cLine=None
+    minus=set()
+  elif l.startswith("@@"):
+    cLine=int(unpfx(l,"@@ -").replace(',',' ').split()[0])
+  elif cLine is not None:
+    if l.startswith("-"): minus.add(cLine)
+    if not l.startswith("+"): cLine+=1
+out()
+
+if repl:
+  subprocess.check_call(["git","log","--no-walk","--oneline"]+list(repl))

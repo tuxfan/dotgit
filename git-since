@@ -1,0 +1,9 @@
+#!/bin/bash -e
+(($#)) || { echo "usage: $0 tree [file...]" >&2; exit 2; }
+tree=$1
+shift
+if [ "$tree" ]; then
+  exec git diff --ignore-submodules --diff-filter=ACMRTB --name-only -z "$tree" -- "$@"
+else
+  exec git ls-files -z "$@"
+fi
