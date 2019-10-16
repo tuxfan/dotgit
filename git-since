@@ -1,4 +1,8 @@
 #!/bin/bash -e
+
+# List files changed since some past version
+# (or all files with "git since '' ...") as input for "xargs -0".
+
 (($#)) || { echo "usage: $0 tree [file...]" >&2; exit 2; }
 tree=$1
 shift

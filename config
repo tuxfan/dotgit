@@ -1,18 +1,43 @@
 # -*- conf -*-
 
 [alias]
+	# 'git up remote/branch' fetches from remote and checks out its 'branch'.
+	# 'git up' means 'git up origin' (see 'git remote set-head').
 	up = !"b=${1:-origin}; git fetch ${b%%/*}; git checkout $b"
+
+	# Pull/merge requests
+
+	# 'git pr1 branch/name' creates and immediately pushes a branch.
 	pr1 = !"bash -c 'git checkout -b $1 && git push' pr1"
+	# 'git pr branch/name base' creates a branch starting at 'origin/base' (or
+	# just 'origin' if no 'base' is given) that doesn't track anything.
 	pr = !"bash -c 'git checkout -b ${1:?no branch name} origin${2:+/}$2~0' pr"
+	# 'git rm-pr remote/branch' fetches from remote, verifies that its 'branch'
+	# contains the current branch, checks it out, and deletes the local branch.
 	# TODO: use --is-ancestor for git >=1.8.0
 	rm-pr = !"bash -c 'b=${1:-origin}; git symbolic-ref HEAD >/dev/null && git fetch ${b%%/*} && if [ \"$(git merge-base HEAD $b)\" = \"$(git rev-parse HEAD)\" ]; then git checkout $b && git branch -d @{-1}; else echo Not merged into $b. >&2; false; fi' rm-pr"
-	fetch-pr = !sh -c 'git fetch central +pull-requests/$1/${2:-merge}:remotes/central/pr/$1' fetch-pr
+	# 'git checkout-pr 42' checks out pull request #42 from Bitbucket.
+	# 'git checkout-pr 42 from' gets the unmerged (perhaps conflicted) version.
 	checkout-pr = !sh -c 'git fetch central pull-requests/$1/${2:-merge} && git checkout FETCH_HEAD' checkout-pr
-	fetch-mr = !sh -c 'git fetch origin +merge-requests/$1/head:remotes/origin/mr/$1' fetch-mr
+	# 'git fetch-pr 42' creates a remote branch 'central/pr/42' from Bitbucket.
+	# 'git fetch-pr 42 from' uses the unmerged (perhaps conflicted) version.
+	fetch-pr = !sh -c 'git fetch central +pull-requests/$1/${2:-merge}:remotes/central/pr/$1' fetch-pr
+	# 'git checkout-mr 42' checks out !42 from GitLab.
 	checkout-mr = !sh -c 'git fetch origin merge-requests/$1/head && git checkout FETCH_HEAD' checkout-mr
+	# 'git fetch-mr 42' creates a remote branch 'origin/mr/42' from GitLab.
+	fetch-mr = !sh -c 'git fetch origin +merge-requests/$1/head:remotes/origin/mr/$1' fetch-mr
+
+	# 'git remerge' squashes the merge HEAD into the merge HEAD^.
+	# The result has HEAD^2 and the other parent of HEAD^ as parents.
 	remerge = !"git reset $(git commit-tree HEAD: $(git rev-parse HEAD^^@ | sed -e s/$(git merge-base HEAD^ HEAD^2)/HEAD^2/ -e s/^/-p\\ /) </dev/null); git commit --amend -c HEAD@{1}^"
+	# 'git tgz /tmp/Foo.tgz commit' creates a tarball that contains 'commit' (or
+	# HEAD if no 'commit' is given) under 'Foo/'.
 	tgz = "!sh -c 'git archive --prefix=${1##*/}/ -o $1.tgz ${2:-HEAD}' tgz"
+	# 'git subgrep ...' runs 'git grep ...' in this repository and in every
+	# submodule of it.
 	subgrep = !"bash -c 'git --no-pager grep \"$@\"; a=(\"$@\"); git submodule foreach --recursive \"$(declare -p a); \"'\\''git --no-pager grep \"${a[@]}\" || :'\\' subgrep"
+
+# Supply the username automatically for certain scp URLs:
 [url "git@xcp-stash:"]
 	insteadOf = xcp-stash:
 [url "git@xcp-gitlab:"]
@@ -23,23 +48,32 @@
 	insteadOf = gitlab.com:
 [url "git@github.com:"]
 	insteadOf = github.com:
+
 [push]
+	# 'git push' means 'git push origin HEAD' (for merge requests).
 	default = current
+
+# Produce more useful diff output:
 [diff]
 	renames = true
 [diff "c++draft"]
 	xfuncname = "\\\\rSec[0-9]+(\\[.*\\])\\{"
 [merge]
 	conflictstyle = diff3
+
+# Use with .gitattributes to suppress concurrent changes to a file:
 [merge "ours"]
 	driver = true %O %A %B
 	name = Ignore other
+
 [rebase]
 	autosquash = true
+
 [core]
-	pager = less -+FX
+	pager = less -+FX							# keep output on the alternate screen
 [pager]
 	subgrep = true
+# Make output pretty and brief:
 [column]
 	ui = auto dense
 [color]

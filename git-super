@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 
+# Identify commits introducing lines deleted by a commit.
+
 import sys,subprocess
 
 def unpfx(s,p):
