@@ -11,6 +11,16 @@
 	checkout-pr = !sh -c 'git fetch central pull-requests/$1/${2:-merge} && git checkout FETCH_HEAD' checkout-pr
 	tgz = "!sh -c 'git archive --prefix=${1##*/}/ -o $1.tgz ${2:-HEAD}' tgz"
 	subgrep = !"bash -c 'git --no-pager grep \"$@\"; a=(\"$@\"); git submodule foreach --recursive \"$(declare -p a); \"'\\''git --no-pager grep \"${a[@]}\" || :'\\' subgrep"
+[url "git@xcp-stash:"]
+	insteadOf = xcp-stash:
+[url "git@xcp-gitlab:"]
+	insteadOf = xcp-gitlab:
+[url "git@gitlab:"]
+	insteadOf = gitlab:
+[url "git@gitlab.com:"]
+	insteadOf = gitlab.com:
+[url "git@github.com:"]
+	insteadOf = github.com:
 [push]
 	default = current
 [diff]
