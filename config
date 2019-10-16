@@ -8,6 +8,8 @@
 	rm-pr = !"bash -c 'b=${1:-origin}; git symbolic-ref HEAD >/dev/null && git fetch ${b%%/*} && if [ \"$(git merge-base HEAD $b)\" = \"$(git rev-parse HEAD)\" ]; then git checkout $b && git branch -d @{-1}; else echo Not merged into $b. >&2; false; fi' rm-pr"
 	fetch-pr = !sh -c 'git fetch central +pull-requests/$1/${2:-merge}:remotes/central/pr/$1' fetch-pr
 	checkout-pr = !sh -c 'git fetch central pull-requests/$1/${2:-merge} && git checkout FETCH_HEAD' checkout-pr
+	fetch-mr = !sh -c 'git fetch origin +merge-requests/$1/head:remotes/origin/mr/$1' fetch-mr
+	checkout-mr = !sh -c 'git fetch origin merge-requests/$1/head && git checkout FETCH_HEAD' checkout-mr
 	remerge = !"git reset $(git commit-tree HEAD: $(git rev-parse HEAD^^@ | sed -e s/$(git merge-base HEAD^ HEAD^2)/HEAD^2/ -e s/^/-p\\ /) </dev/null); git commit --amend -c HEAD@{1}^"
 	tgz = "!sh -c 'git archive --prefix=${1##*/}/ -o $1.tgz ${2:-HEAD}' tgz"
 	subgrep = !"bash -c 'git --no-pager grep \"$@\"; a=(\"$@\"); git submodule foreach --recursive \"$(declare -p a); \"'\\''git --no-pager grep \"${a[@]}\" || :'\\' subgrep"
