@@ -3,7 +3,7 @@
 [alias]
 	# 'git up remote/branch' fetches from remote and checks out its 'branch'.
 	# 'git up' means 'git up origin' (see 'git remote set-head').
-	up = !"b=${1:-origin}; git fetch ${b%%/*}; git checkout $b"
+	up = !"b=${1:-origin}; git fetch ${b%%/*}; git checkout $b #"
 
 	# Pull/merge requests
 
