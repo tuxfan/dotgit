@@ -73,6 +73,7 @@
 	pager = less -+FX							# keep output on the alternate screen
 [pager]
 	subgrep = true
+	branch = false
 # Make output pretty and brief:
 [column]
 	ui = auto dense
