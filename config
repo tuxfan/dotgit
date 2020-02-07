@@ -87,3 +87,4 @@
 	statusHints = false
 	resolveConflict = false
 	detachedHead = false
+	waitingForEditor = false
